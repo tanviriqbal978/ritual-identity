@@ -96,7 +96,7 @@ export default function App() {
             walletAddress={address}
             isConnected={isConnected}
             onConnectWallet={handleConnectWallet}
-            onMinted={(id) => { setTokenId(id); go(7) }}
+            onMinted={(id) => { setTokenId(id) }}
           />
         )}
 
