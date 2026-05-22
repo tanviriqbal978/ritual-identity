@@ -7,35 +7,20 @@ export default function Screen6WalletMint({ twitterHandle, walletAddress, isConn
   const [phase, setPhase] = useState(isConnected ? 'ready' : 'connect')
   const [errorMsg, setErrorMsg] = useState('')
 
-  const {
-    writeContract,
-    data: txHash,
-    isError: writeError,
-    error: writeErr,
-    reset,
-  } = useWriteContract()
+  const { writeContract, data: txHash, isError: writeError, error: writeErr, reset } = useWriteContract()
+  const { isLoading: isTxPending, isSuccess: isTxSuccess, data: receipt } = useWaitForTransactionReceipt({ hash: txHash })
 
-  const {
-    isLoading: isTxPending,
-    isSuccess: isTxSuccess,
-    data: receipt,
-  } = useWaitForTransactionReceipt({ hash: txHash })
-
-  // ── Watch wallet connect ──
   useEffect(() => {
     if (isConnected && phase === 'connect') setPhase('ready')
   }, [isConnected])
 
-  // ── Transaction SUCCESS ──
+  // ✅ SUCCESS — phase কে explicitly 'success' এ নিয়ে যাচ্ছি
   useEffect(() => {
-    if (isTxSuccess && receipt) {
-      const tokenId = receipt?.logs?.[0]?.topics?.[2]
+    if (isTxSuccess) {
       setPhase('success')
-      setTimeout(() => onMinted(tokenId ? parseInt(tokenId, 16) : null), 1400)
     }
-  }, [isTxSuccess, receipt])
+  }, [isTxSuccess])
 
-  // ── Transaction ERROR ──
   useEffect(() => {
     if (writeError) {
       setPhase('error')
@@ -45,7 +30,6 @@ export default function Screen6WalletMint({ twitterHandle, walletAddress, isConn
 
   const handleMint = () => {
     setPhase('minting')
-    setErrorMsg('')
     writeContract({
       address: CONTRACT_ADDRESS,
       abi: CONTRACT_ABI,
@@ -54,19 +38,8 @@ export default function Screen6WalletMint({ twitterHandle, walletAddress, isConn
     })
   }
 
-  const handleRetry = () => {
-    reset()
-    setPhase('ready')
-    setErrorMsg('')
-  }
+  const shortAddr = walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : null
 
-  const shortAddr = walletAddress
-    ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
-    : null
-
-  const isBusy = (phase === 'minting') || isTxPending
-
-  // Tweet share URL (also on this screen after success)
   const tweetText = encodeURIComponent(
     `Just minted my Ritual Connection Identity\nEntering the Ritual ecosystem properly now.\n\n@ritualfoundation #RitualIdentity`
   )
@@ -99,9 +72,9 @@ export default function Screen6WalletMint({ twitterHandle, walletAddress, isConn
         </h2>
         <div style={{ width: '120px', height: '1px', margin: '0 auto 24px', background: 'linear-gradient(90deg, transparent, var(--green-bright), transparent)' }} />
 
+        {/* ✅ phase দিয়ে control — isBusy দিয়ে নয় */}
         <AnimatePresence mode="wait">
 
-          {/* CONNECT */}
           {phase === 'connect' && (
             <motion.div key="connect" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <div style={{ fontFamily: 'var(--font-body)', fontSize: '0.72rem', color: 'var(--green-mid)', letterSpacing: '0.15em', marginBottom: '24px', lineHeight: 1.8 }}>
@@ -114,7 +87,6 @@ export default function Screen6WalletMint({ twitterHandle, walletAddress, isConn
             </motion.div>
           )}
 
-          {/* READY */}
           {phase === 'ready' && (
             <motion.div key="ready" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '8px 16px', border: '1px solid rgba(0,255,136,0.3)', background: 'rgba(0,255,136,0.06)', marginBottom: '20px' }}>
@@ -132,8 +104,7 @@ export default function Screen6WalletMint({ twitterHandle, walletAddress, isConn
             </motion.div>
           )}
 
-          {/* MINTING */}
-          {isBusy && (
+          {phase === 'minting' && (
             <motion.div key="minting" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <div style={{ marginBottom: '20px' }}><MintingSpinner /></div>
               <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.8rem', color: 'var(--green-bright)', letterSpacing: '0.3em' }}>
@@ -147,7 +118,6 @@ export default function Screen6WalletMint({ twitterHandle, walletAddress, isConn
             </motion.div>
           )}
 
-          {/* SUCCESS — show minted + share button directly here */}
           {phase === 'success' && (
             <motion.div key="success" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
               <motion.div
@@ -160,15 +130,13 @@ export default function Screen6WalletMint({ twitterHandle, walletAddress, isConn
                 IDENTITY CONFIRMED · @{twitterHandle}
               </div>
 
-              {/* Tweet preview */}
               <div style={{ width: '100%', background: 'rgba(0,255,136,0.04)', border: '1px solid rgba(0,255,136,0.15)', padding: '12px 16px', textAlign: 'left' }}>
-                <div style={{ fontFamily: 'var(--font-body)', fontSize: '0.6rem', color: 'rgba(0,255,136,0.45)', letterSpacing: '0.06em', lineHeight: 1.9, fontStyle: 'italic' }}>
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: '0.6rem', color: 'rgba(0,255,136,0.5)', letterSpacing: '0.06em', lineHeight: 1.9, fontStyle: 'italic' }}>
                   "Just minted my Ritual Connection Identity<br />
                   Entering the Ritual ecosystem properly now."
                 </div>
               </div>
 
-              {/* Share button */}
               <a href={tweetUrl} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', width: '100%' }}>
                 <button className="btn-ritual" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
                   <span style={{ fontSize: '1rem' }}>𝕏</span>
@@ -178,13 +146,12 @@ export default function Screen6WalletMint({ twitterHandle, walletAddress, isConn
             </motion.div>
           )}
 
-          {/* ERROR */}
           {phase === 'error' && (
             <motion.div key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <div style={{ fontFamily: 'var(--font-body)', fontSize: '0.68rem', color: '#ff4466', letterSpacing: '0.1em', marginBottom: '20px', lineHeight: 1.7 }}>
                 {errorMsg}
               </div>
-              <button className="btn-ritual" onClick={handleRetry} style={{ width: '100%' }}>
+              <button className="btn-ritual" onClick={() => { reset(); setPhase('ready') }} style={{ width: '100%' }}>
                 TRY AGAIN
               </button>
             </motion.div>
