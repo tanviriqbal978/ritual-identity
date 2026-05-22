@@ -3,30 +3,43 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from '../contract'
 
-// Screen 6 — Connect Wallet → Confirm Mint
 export default function Screen6WalletMint({ twitterHandle, walletAddress, isConnected, onConnectWallet, onMinted }) {
   const [phase, setPhase] = useState(isConnected ? 'ready' : 'connect')
   const [errorMsg, setErrorMsg] = useState('')
 
-  const { writeContract, data: txHash, isError: writeError, error: writeErr } = useWriteContract()
-  const { isLoading: isTxPending } = useWaitForTransactionReceipt({
-    hash: txHash,
-    onSuccess: (receipt) => {
-      const tokenId = receipt?.logs?.[0]?.topics?.[2]
-      setPhase('success')
-      setTimeout(() => onMinted(tokenId ? parseInt(tokenId, 16) : null), 1200)
-    },
-  })
+  const {
+    writeContract,
+    data: txHash,
+    isError: writeError,
+    error: writeErr,
+    reset,
+  } = useWriteContract()
 
-  // Watch wallet connect
+  const {
+    isLoading: isTxPending,
+    isSuccess: isTxSuccess,
+    data: receipt,
+  } = useWaitForTransactionReceipt({ hash: txHash })
+
+  // ── Watch wallet connect ──
   useEffect(() => {
     if (isConnected && phase === 'connect') setPhase('ready')
   }, [isConnected])
 
+  // ── Transaction SUCCESS ──
+  useEffect(() => {
+    if (isTxSuccess && receipt) {
+      const tokenId = receipt?.logs?.[0]?.topics?.[2]
+      setPhase('success')
+      setTimeout(() => onMinted(tokenId ? parseInt(tokenId, 16) : null), 1400)
+    }
+  }, [isTxSuccess, receipt])
+
+  // ── Transaction ERROR ──
   useEffect(() => {
     if (writeError) {
       setPhase('error')
-      setErrorMsg(writeErr?.message?.slice(0, 100) || 'Transaction failed')
+      setErrorMsg(writeErr?.shortMessage || writeErr?.message?.slice(0, 100) || 'Transaction failed')
     }
   }, [writeError])
 
@@ -41,11 +54,23 @@ export default function Screen6WalletMint({ twitterHandle, walletAddress, isConn
     })
   }
 
+  const handleRetry = () => {
+    reset()
+    setPhase('ready')
+    setErrorMsg('')
+  }
+
   const shortAddr = walletAddress
     ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
     : null
 
-  const isBusy = phase === 'minting' || isTxPending
+  const isBusy = (phase === 'minting') || isTxPending
+
+  // Tweet share URL (also on this screen after success)
+  const tweetText = encodeURIComponent(
+    `Just minted my Ritual Connection Identity\nEntering the Ritual ecosystem properly now.\n\n@ritualfoundation #RitualIdentity`
+  )
+  const tweetUrl = `https://twitter.com/intent/tweet?text=${tweetText}`
 
   return (
     <motion.div
@@ -65,57 +90,52 @@ export default function Screen6WalletMint({ twitterHandle, walletAddress, isConn
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2, duration: 0.7 }}
-        style={{ position: 'relative', zIndex: 10, background: 'rgba(0,10,4,0.9)', border: '1px solid rgba(0,255,136,0.25)', boxShadow: '0 0 40px rgba(0,255,136,0.08)', padding: 'clamp(28px,5vw,52px) clamp(28px,6vw,60px)', width: 'min(440px, 90vw)', clipPath: 'polygon(16px 0%, 100% 0%, calc(100% - 16px) 100%, 0% 100%)', textAlign: 'center' }}
+        style={{ position: 'relative', zIndex: 10, background: 'rgba(0,10,4,0.9)', border: '1px solid rgba(0,255,136,0.25)', boxShadow: '0 0 40px rgba(0,255,136,0.08)', padding: 'clamp(24px,5vw,48px) clamp(24px,6vw,56px)', width: 'min(440px, 90vw)', clipPath: 'polygon(16px 0%, 100% 0%, calc(100% - 16px) 100%, 0% 100%)', textAlign: 'center' }}
       >
         <div style={{ fontFamily: 'var(--font-body)', fontSize: '0.65rem', color: 'var(--text-dim)', letterSpacing: '0.4em', marginBottom: '6px' }}>◈ STEP 06 ◈</div>
 
         <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: 'clamp(1.2rem,3.5vw,1.8rem)', color: 'var(--green-bright)', letterSpacing: '0.2em', textTransform: 'uppercase', textShadow: '0 0 24px rgba(0,255,136,0.6)', marginBottom: '8px' }}>
-          {phase === 'success' ? 'MINTED ✓' : 'CONFIRM MINT'}
+          {phase === 'success' ? 'MINTED' : 'CONFIRM MINT'}
         </h2>
         <div style={{ width: '120px', height: '1px', margin: '0 auto 24px', background: 'linear-gradient(90deg, transparent, var(--green-bright), transparent)' }} />
 
         <AnimatePresence mode="wait">
 
-          {/* CONNECT phase */}
+          {/* CONNECT */}
           {phase === 'connect' && (
             <motion.div key="connect" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <div style={{ fontFamily: 'var(--font-body)', fontSize: '0.72rem', color: 'var(--green-mid)', letterSpacing: '0.15em', marginBottom: '24px', lineHeight: 1.8 }}>
                 Connect your wallet to mint<br />
                 <span style={{ color: 'var(--green-bright)' }}>@{twitterHandle}</span> on-chain.
               </div>
-              <button className="btn-ritual" onClick={onConnectWallet} style={{ width: '100%', marginBottom: '0' }}>
+              <button className="btn-ritual" onClick={onConnectWallet} style={{ width: '100%' }}>
                 CONNECT WALLET
               </button>
             </motion.div>
           )}
 
-          {/* READY phase */}
+          {/* READY */}
           {phase === 'ready' && (
             <motion.div key="ready" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              {/* Wallet badge */}
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '8px 16px', border: '1px solid rgba(0,255,136,0.3)', background: 'rgba(0,255,136,0.06)', marginBottom: '20px' }}>
                 <span style={{ color: 'var(--green-bright)', fontSize: '0.7rem' }}>✓</span>
                 <span style={{ fontFamily: 'var(--font-body)', fontSize: '0.68rem', color: 'var(--green-mid)', letterSpacing: '0.1em' }}>{shortAddr}</span>
               </div>
-
               <div style={{ fontFamily: 'var(--font-body)', fontSize: '0.65rem', color: 'var(--text-dim)', letterSpacing: '0.15em', marginBottom: '24px', lineHeight: 1.9 }}>
                 IDENTITY: <span style={{ color: 'var(--green-bright)' }}>@{twitterHandle}</span><br />
                 CHAIN: <span style={{ color: 'var(--green-mid)' }}>RITUAL · 1979</span><br />
                 GAS: <span style={{ color: 'var(--green-mid)' }}>ESTIMATED ON SIGN</span>
               </div>
-
               <button className="btn-ritual" onClick={handleMint} style={{ width: '100%' }}>
                 MINT IDENTITY
               </button>
             </motion.div>
           )}
 
-          {/* MINTING phase */}
+          {/* MINTING */}
           {isBusy && (
             <motion.div key="minting" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <div style={{ marginBottom: '20px' }}>
-                <MintingSpinner />
-              </div>
+              <div style={{ marginBottom: '20px' }}><MintingSpinner /></div>
               <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.8rem', color: 'var(--green-bright)', letterSpacing: '0.3em' }}>
                 MINTING...
               </div>
@@ -127,17 +147,34 @@ export default function Screen6WalletMint({ twitterHandle, walletAddress, isConn
             </motion.div>
           )}
 
-          {/* SUCCESS */}
+          {/* SUCCESS — show minted + share button directly here */}
           {phase === 'success' && (
-            <motion.div key="success" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
+            <motion.div key="success" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
               <motion.div
                 initial={{ scale: 0 }} animate={{ scale: 1 }}
                 transition={{ type: 'spring', stiffness: 250 }}
-                style={{ fontSize: '3rem', marginBottom: '12px', filter: 'drop-shadow(0 0 20px rgba(0,255,136,0.7))' }}
+                style={{ fontSize: '3rem', filter: 'drop-shadow(0 0 24px rgba(0,255,136,0.8))' }}
               >✓</motion.div>
+
               <div style={{ fontFamily: 'var(--font-body)', fontSize: '0.7rem', color: 'var(--green-mid)', letterSpacing: '0.2em' }}>
-                IDENTITY CONFIRMED
+                IDENTITY CONFIRMED · @{twitterHandle}
               </div>
+
+              {/* Tweet preview */}
+              <div style={{ width: '100%', background: 'rgba(0,255,136,0.04)', border: '1px solid rgba(0,255,136,0.15)', padding: '12px 16px', textAlign: 'left' }}>
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: '0.6rem', color: 'rgba(0,255,136,0.45)', letterSpacing: '0.06em', lineHeight: 1.9, fontStyle: 'italic' }}>
+                  "Just minted my Ritual Connection Identity<br />
+                  Entering the Ritual ecosystem properly now."
+                </div>
+              </div>
+
+              {/* Share button */}
+              <a href={tweetUrl} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', width: '100%' }}>
+                <button className="btn-ritual" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '1rem' }}>𝕏</span>
+                  SHARE ON TWITTER
+                </button>
+              </a>
             </motion.div>
           )}
 
@@ -145,9 +182,9 @@ export default function Screen6WalletMint({ twitterHandle, walletAddress, isConn
           {phase === 'error' && (
             <motion.div key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <div style={{ fontFamily: 'var(--font-body)', fontSize: '0.68rem', color: '#ff4466', letterSpacing: '0.1em', marginBottom: '20px', lineHeight: 1.7 }}>
-                {errorMsg || 'Transaction failed'}
+                {errorMsg}
               </div>
-              <button className="btn-ritual" onClick={() => setPhase('ready')} style={{ width: '100%' }}>
+              <button className="btn-ritual" onClick={handleRetry} style={{ width: '100%' }}>
                 TRY AGAIN
               </button>
             </motion.div>
